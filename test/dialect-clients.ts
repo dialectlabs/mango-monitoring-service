@@ -22,20 +22,31 @@ const connection = new web3.Connection(
   'recent',
 );
 
-const DIALECT_PROGRAM_ADDRESS = programs[NETWORK_NAME].programAddress;
+const DIALECT_PROGRAM_ADDRESS = '2YFyZAg8rBtuvzFFiGvXwPHFAQJ2FXZoS7bYCKticpjk';
+// programs[NETWORK_NAME].programAddress;
 const createClients = async (n: number): Promise<void> => {
   console.log(
     `Creating ${n} dialect clients with target ${MONITORING_SERVICE_PUBLIC_KEY}`,
   );
 
-  const clients = Array(n)
-    .fill(0)
-    .map((it) => web3.Keypair.generate());
+  // const clients = Array(n)
+  //   .fill(0)
+  //   .map((it) => web3.Keypair.generate());
 
   // TO TEST with your own keypair,
   // comment out the clients array above, and use instead the following line:
-  //const clients = Array(web3.Keypair.fromSecretKey(new Uint8Array([/* Your keypair */])));
-  
+  const clients = Array(
+    web3.Keypair.fromSecretKey(
+      new Uint8Array([
+        157, 206, 38, 214, 197, 90, 141, 133, 217, 214, 33, 93, 189, 109, 152,
+        19, 18, 15, 77, 148, 189, 246, 25, 202, 108, 33, 103, 163, 159, 143, 50,
+        73, 99, 127, 238, 225, 142, 17, 56, 91, 135, 37, 183, 166, 245, 192,
+        164, 110, 38, 139, 246, 66, 156, 59, 35, 240, 208, 112, 240, 35, 174,
+        189, 226, 246,
+      ]),
+    ),
+  );
+
   const wallet = Wallet_.embedded(clients[0].secretKey);
   // configure anchor
   anchor.setProvider(
@@ -114,10 +125,7 @@ const createClients = async (n: number): Promise<void> => {
               dialect: { members },
             },
           }) => {
-            const dialectAccount = await getDialectForMembers(
-              program,
-              members,
-            );
+            const dialectAccount = await getDialectForMembers(program, members);
             return [
               dialectAccount.publicKey.toString(),
               { owner, dialectAccount },
