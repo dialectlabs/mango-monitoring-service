@@ -31,18 +31,19 @@ import {
 } from '@solana/spl-governance';
 
 const config = new Config(IDS);
-const groupConfig = config.getGroupWithName('devnet.2') as GroupConfig;
+// const groupConfig = config.getGroupWithName('devnet.2') as GroupConfig;
+const groupConfig = config.getGroupWithName('mainnet.1') as GroupConfig;
 const connection = new Connection(
   config.cluster_urls[groupConfig.cluster],
   'processed',
 );
 
-//const mainnetPK = new PublicKey('GovER5Lthms3bLBqWub97yVrMmEogzX7xNjdXpPPCVZw');
 const mainnetPK = new PublicKey('GovER5Lthms3bLBqWub97yVrMmEogzX7xNjdXpPPCVZw');
 
 const connectionRealm = new Connection(
   // process.env.REALMS_PRC_URL ?? process.env.RPC_URL! ?? 'http://localhost:8899',
-  'https://mango.devnet.rpcpool.com',
+  // 'https://mango.devnet.rpcpool.com',
+  process.env.RPC_URL,
 );
 
 export interface MarketFillsData {
@@ -417,9 +418,9 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
   private async getMangoProposals(
     subscribers: ResourceId[],
   ): Promise<SourceData<RealmData>[]> {
-    // DEVNET
     const realmId = new PublicKey(
-      'H2iny4dUP2ngt9p4niUWVX4TKvr1h9eSWGNdP1zvwzNQ',
+      // 'H2iny4dUP2ngt9p4niUWVX4TKvr1h9eSWGNdP1zvwzNQ', // DEVNET
+      'DPiH3H3c7t47BMxqTxLsuPQpEC6Kne8GA9VXbxpnZxFE', // MAINNET-BETA
     );
     const realms = await getRealm(connection, realmId);
     const proposals = await MonitoringService.getProposals(realms);
