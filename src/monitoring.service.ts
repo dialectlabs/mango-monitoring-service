@@ -43,7 +43,7 @@ const mainnetPK = new PublicKey('GovER5Lthms3bLBqWub97yVrMmEogzX7xNjdXpPPCVZw');
 const connectionRealm = new Connection(
   // process.env.REALMS_PRC_URL ?? process.env.RPC_URL! ?? 'http://localhost:8899',
   // 'https://mango.devnet.rpcpool.com',
-  process.env.RPC_URL,
+  process.env.RPC_URL!,
 );
 
 export interface MarketFillsData {
@@ -74,7 +74,7 @@ interface RealmData {
   realmMembersSubscribedToNotifications: PublicKey[];
 }
 
-const threshold = 15.9;
+const threshold = 17.8;
 
 @Injectable()
 export class MonitoringService implements OnModuleInit, OnModuleDestroy {
@@ -119,6 +119,30 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
         },
         { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
       )
+      .email(
+        ({ value }) => {
+          const message: string = this.constructMessage(value);
+          return { 
+            subject: "[Mango] Your order was filled",
+            text: message 
+          };
+        },
+        { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
+      )
+      .sms(
+        ({ value }) => {
+          const message: string = this.constructMessage(value);
+          return { body: message };
+        },
+        { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
+      )
+      .telegram(
+        ({ value }) => {
+          const message: string = this.constructMessage(value);
+          return { body: message };
+        },
+        { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
+      )
       .and()
       .build();
     monitor.start();
@@ -160,11 +184,38 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
       .dialectThread(
         ({ value }) => {
           return {
-            message: `⚠️ WARNING: Your account has dropped below the ${threshold}% threshold and is now unhealthy. It is currently at ${value.toFixed(
+            message: `❗️ WARNING: Your account has dropped below the ${threshold}% threshold and is now unhealthy. It is currently at ${value.toFixed(
               2,
             )}%.`,
           };
         },
+        { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
+      )
+      .email(
+        ({ value }) => {
+          return {
+            subject: "Mango: Your account now unhealthy",
+            text: `❗️ WARNING: Your account has dropped below the ${threshold}% threshold and is now unhealthy. It is currently at ${value.toFixed(
+              2,
+            )}%.`,
+          };
+        },
+        { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
+      )
+      .sms(
+        ({ value }) => ({
+          body: `❗️ WARNING: Your account has dropped below the ${threshold}% threshold and is now unhealthy. It is currently at ${value.toFixed(
+            2,
+          )}%.`,
+        }),
+        { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
+      )
+      .telegram(
+        ({ value }) => ({
+          body: `❗️ WARNING: Your account has dropped below the ${threshold}% threshold and is now unhealthy. It is currently at ${value.toFixed(
+            2,
+          )}%.`,
+        }),
         { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
       )
       .also()
@@ -186,6 +237,27 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
         },
         { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
       )
+      .email(
+        ({ value }) => {
+          return {
+            subject: "Mango: Your account is now healthy",
+            text: `✅ Your account is now healthy: ${value.toFixed(2)}%`,
+          };
+        },
+        { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
+      )
+      .sms(
+        ({ value }) => ({
+          body: `✅ Your account is now healthy: ${value.toFixed(2)}%`,
+        }),
+        { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
+      )
+      .telegram(
+        ({ value }) => ({
+          body: `✅ Your account is now healthy: ${value.toFixed(2)}%`,
+        }),
+        { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
+      )
       .also()
       .transform<number, number>({
         keys: ['beginLiquidated'],
@@ -203,6 +275,27 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
             message: `🚨 ALERT: Your account has passed the ${0}% liquidation threshold and is being liquidated.`,
           };
         },
+        { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
+      )
+      .email(
+        ({ value }) => {
+          return {
+            subject: "Mango: Your account is being liquidated",
+            text: `🚨 ALERT: Your account has passed the ${0}% liquidation threshold and is being liquidated.`
+          };
+        },
+        { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
+      )
+      .sms(
+        ({ value }) => ({
+          body: `🚨 ALERT: Your account has passed the ${0}% liquidation threshold and is being liquidated.`,
+        }),
+        { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
+      )
+      .telegram(
+        ({ value }) => ({
+          body: `🚨 ALERT: Your account has passed the ${0}% liquidation threshold and is being liquidated.`,
+        }),
         { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
       )
       .and()
@@ -237,12 +330,7 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
             message: message,
           };
         },
-        {
-          dispatch: 'multicast',
-          to: ({ origin }) => {
-            return origin.realmMembersSubscribedToNotifications;
-          },
-        },
+        { dispatch: 'unicast', to: ({ origin }) => new PublicKey("7hQWPq6t1TFsykwE5EhAPvSWQ1J5waXn9a4ph4R6DADB") },
       )
       .and()
       .build();
@@ -409,7 +497,7 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
     if (process.env.TEST_MODE) {
       return proposals.slice(
         0,
-        Math.round(Math.random() * Math.max(0, proposals.length - 3)),
+        Math.round(Math.random() * Math.max(1, 2)),
       );
     }
     return proposals;
@@ -485,9 +573,7 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
     return [
       ...proposalsAdded.map(
         (it) =>
-          `📜 New proposal for ${realmName}: https://realms.today/dao/${realmId}/proposal/${it.pubkey.toBase58()} -
-          ${it.account.name} added by ${it.account.tokenOwnerRecord.toBase58()}
-          `,
+          `📜 New proposal for ${realmName}: https://realms.today/dao/${realmId}/proposal/${it.pubkey.toBase58()} - ${it.account.name} added by ${it.account.tokenOwnerRecord.toBase58()}`,
       ),
     ].join('\n');
   }
