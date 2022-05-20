@@ -74,7 +74,7 @@ interface RealmData {
   realmMembersSubscribedToNotifications: PublicKey[];
 }
 
-const threshold = 17.8;
+const unhealthyThreshold = 17.8;
 
 @Injectable()
 export class MonitoringService implements OnModuleInit, OnModuleDestroy {
@@ -123,7 +123,7 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
         ({ value }) => {
           const message: string = this.constructMessage(value);
           return { 
-            subject: "[Mango] Your order was filled",
+            subject: "🥭 Mango: Your order was filled",
             text: message 
           };
         },
@@ -131,14 +131,14 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
       )
       .sms(
         ({ value }) => {
-          const message: string = this.constructMessage(value);
+          const message: string = `🥭 Mango: ` +  this.constructMessage(value);
           return { body: message };
         },
         { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
       )
       .telegram(
         ({ value }) => {
-          const message: string = this.constructMessage(value);
+          const message: string = `🥭 Mango: ` +  this.constructMessage(value);
           return { body: message };
         },
         { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
@@ -147,7 +147,7 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
       .build();
     monitor.start();
 
-    const healtMonitor = Monitors.builder({
+    const healthMonitor = Monitors.builder({
       monitorKeypair: this.dialectConnection.getKeypair(),
       dialectProgram: this.dialectConnection.getProgram(),
       sinks: {
@@ -176,7 +176,7 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
         pipelines: [
           Pipelines.threshold({
             type: 'falling-edge',
-            threshold,
+            threshold: unhealthyThreshold,
           }),
         ],
       })
@@ -184,9 +184,7 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
       .dialectThread(
         ({ value }) => {
           return {
-            message: `❗️ WARNING: Your account has dropped below the ${threshold}% threshold and is now unhealthy. It is currently at ${value.toFixed(
-              2,
-            )}%.`,
+            message: this.constructUnhealthyMessage(value, unhealthyThreshold),
           };
         },
         { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
@@ -194,27 +192,21 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
       .email(
         ({ value }) => {
           return {
-            subject: "Mango: Your account now unhealthy",
-            text: `❗️ WARNING: Your account has dropped below the ${threshold}% threshold and is now unhealthy. It is currently at ${value.toFixed(
-              2,
-            )}%.`,
+            subject: "🥭 Mango: Account is unhealthy",
+            text: this.constructUnhealthyMessage(value, unhealthyThreshold),
           };
         },
         { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
       )
       .sms(
         ({ value }) => ({
-          body: `❗️ WARNING: Your account has dropped below the ${threshold}% threshold and is now unhealthy. It is currently at ${value.toFixed(
-            2,
-          )}%.`,
+          body: `🥭 Mango: ` + this.constructUnhealthyMessage(value, unhealthyThreshold),
         }),
         { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
       )
       .telegram(
         ({ value }) => ({
-          body: `❗️ WARNING: Your account has dropped below the ${threshold}% threshold and is now unhealthy. It is currently at ${value.toFixed(
-            2,
-          )}%.`,
+          body: `🥭 Mango: ` + this.constructUnhealthyMessage(value, unhealthyThreshold),
         }),
         { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
       )
@@ -224,7 +216,7 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
         pipelines: [
           Pipelines.threshold({
             type: 'rising-edge',
-            threshold,
+            threshold: unhealthyThreshold,
           }),
         ],
       })
@@ -232,7 +224,7 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
       .dialectThread(
         ({ value }) => {
           return {
-            message: `✅ Your account is now healthy: ${value.toFixed(2)}%`,
+            message: this.constructHealthyMessage(value),
           };
         },
         { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
@@ -240,21 +232,21 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
       .email(
         ({ value }) => {
           return {
-            subject: "Mango: Your account is now healthy",
-            text: `✅ Your account is now healthy: ${value.toFixed(2)}%`,
+            subject: "🥭 Mango: Account is healthy",
+            text: this.constructHealthyMessage(value),
           };
         },
         { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
       )
       .sms(
         ({ value }) => ({
-          body: `✅ Your account is now healthy: ${value.toFixed(2)}%`,
+          body: `🥭 Mango: ` + this.constructHealthyMessage(value),
         }),
         { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
       )
       .telegram(
         ({ value }) => ({
-          body: `✅ Your account is now healthy: ${value.toFixed(2)}%`,
+          body: `🥭 Mango: ` + this.constructHealthyMessage(value),
         }),
         { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
       )
@@ -272,7 +264,7 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
       .dialectThread(
         ({ value }) => {
           return {
-            message: `🚨 ALERT: Your account has passed the ${0}% liquidation threshold and is being liquidated.`,
+            message: this.constructCriticalHealthMessage(),
           };
         },
         { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
@@ -280,27 +272,27 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
       .email(
         ({ value }) => {
           return {
-            subject: "Mango: Your account is being liquidated",
-            text: `🚨 ALERT: Your account has passed the ${0}% liquidation threshold and is being liquidated.`
+            subject: "🥭 Mango: Your account is being liquidated",
+            text: this.constructCriticalHealthMessage(),
           };
         },
         { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
       )
       .sms(
         ({ value }) => ({
-          body: `🚨 ALERT: Your account has passed the ${0}% liquidation threshold and is being liquidated.`,
+          body: `🥭 Mango: ` + this.constructCriticalHealthMessage(),
         }),
         { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
       )
       .telegram(
         ({ value }) => ({
-          body: `🚨 ALERT: Your account has passed the ${0}% liquidation threshold and is being liquidated.`,
+          body: `🥭 Mango: ` + this.constructCriticalHealthMessage(),
         }),
         { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
       )
       .and()
       .build();
-    healtMonitor.start();
+    healthMonitor.start();
 
     const monitorMangoDAO = Monitors.builder({
       monitorKeypair: this.dialectConnection.getKeypair(),
@@ -337,6 +329,20 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
     monitorMangoDAO.start();
   }
 
+  private constructUnhealthyMessage(value: number, threshold: number): string {
+    return `❗️ WARNING: Your account health has dropped below the ${threshold}% threshold and is now unhealthy. It is currently at ${value.toFixed(
+      2,
+    )}%.`;
+  }
+
+  private constructHealthyMessage(value: number): string {
+    return `✅ Your account is now healthy: ${value.toFixed(2)}%`;
+  }
+
+  private constructCriticalHealthMessage(): string {
+    return `🚨 ALERT: Your account health has passed the ${0}% liquidation threshold and is being liquidated.`;
+  }
+  
   async onModuleDestroy() {
     await Monitors.shutdown();
   }
