@@ -74,7 +74,7 @@ interface RealmData {
   realmMembersSubscribedToNotifications: PublicKey[];
 }
 
-const unhealthyThreshold = 17.8;
+const unhealthyThreshold = 100;
 
 @Injectable()
 export class MonitoringService implements OnModuleInit, OnModuleDestroy {
@@ -205,9 +205,11 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
         { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
       )
       .telegram(
-        ({ value }) => ({
-          body: `🥭 Mango: ` + this.constructUnhealthyMessage(value, unhealthyThreshold),
-        }),
+        ({ value }) => {
+          return {
+            body: `🥭 Mango: ` + this.constructUnhealthyMessage(value, unhealthyThreshold)
+          }
+        },
         { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
       )
       .also()
