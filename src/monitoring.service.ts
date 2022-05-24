@@ -29,21 +29,25 @@ import {
   Proposal,
   Realm,
 } from '@solana/spl-governance';
+import { DiscordNotificationSink } from './discord-notification-sink';
 
 const config = new Config(IDS);
-// const groupConfig = config.getGroupWithName('devnet.2') as GroupConfig;
+// DEVNET
+//const groupConfig = config.getGroupWithName('devnet.2') as GroupConfig;
 const groupConfig = config.getGroupWithName('mainnet.1') as GroupConfig;
 const connection = new Connection(
   config.cluster_urls[groupConfig.cluster],
   'processed',
 );
 
-const mainnetPK = new PublicKey('GovER5Lthms3bLBqWub97yVrMmEogzX7xNjdXpPPCVZw');
+// DEVNET
+//const mainnetPK = new PublicKey('GovER5Lthms3bLBqWub97yVrMmEogzX7xNjdXpPPCVZw');
+
+//MAINNET
+const mainnetPK = new PublicKey('GqTPL6qRf5aUuqscLh8Rg2HTxPUXfhhAXDptTLhp1t2J');
 
 const connectionRealm = new Connection(
-  // process.env.REALMS_PRC_URL ?? process.env.RPC_URL! ?? 'http://localhost:8899',
-  // 'https://mango.devnet.rpcpool.com',
-  process.env.RPC_URL!,
+  process.env.RPC_URL!
 );
 
 export interface MarketFillsData {
@@ -79,6 +83,7 @@ const unhealthyThreshold = 100;
 @Injectable()
 export class MonitoringService implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly dialectConnection: DialectConnection) {}
+  private readonly notificationSink: DiscordNotificationSink = new DiscordNotificationSink();
 
   private readonly logger = new Logger(MonitoringService.name);
 
@@ -98,7 +103,7 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
         email: {
           apiToken: process.env.SENDGRID_KEY!,
           senderEmail: process.env.SENDGRID_EMAIL!,
-        },
+        }
       },
       web2SubscriberRepositoryUrl: process.env.WEB2_SUBSCRIBER_SERVICE_BASE_URL,
     })
@@ -324,7 +329,71 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
             message: message,
           };
         },
-        { dispatch: 'unicast', to: ({ origin }) => new PublicKey("7hQWPq6t1TFsykwE5EhAPvSWQ1J5waXn9a4ph4R6DADB") },
+        { dispatch: 'multicast',  to: ({ origin }) => origin.realmMembersSubscribedToNotifications},
+      )
+      .email(
+        ({ value, context }) => {
+          const realmName: string = context.origin.realm.account.name;
+          const realmId: string = context.origin.realm.pubkey.toBase58();
+          const message: string = this.constructMessageMango(
+            realmName,
+            realmId,
+            value,
+          );
+
+          return {
+            subject: "🥭 Mango: new proposal was created",
+            text: message
+          };
+        },
+        { dispatch: 'multicast',  to: ({ origin }) => origin.realmMembersSubscribedToNotifications},
+      )
+      .sms(
+        ({ value, context }) => {
+          const realmName: string = context.origin.realm.account.name;
+          const realmId: string = context.origin.realm.pubkey.toBase58();
+          const message: string = this.constructMessageMango(
+            realmName,
+            realmId,
+            value,
+          );
+          return {
+            body: `🥭 Mango: ` + message
+          }
+        },
+        { dispatch: 'multicast',  to: ({ origin }) => origin.realmMembersSubscribedToNotifications},
+      )
+      .telegram(
+        ({ value, context }) => {
+          const realmName: string = context.origin.realm.account.name;
+          const realmId: string = context.origin.realm.pubkey.toBase58();
+          const message: string = this.constructMessageMango(
+            realmName,
+            realmId,
+            value,
+          );
+          return {
+            body: `🥭 Mango: ` + message,
+          }
+        },
+        { dispatch: 'multicast',  to: ({ origin }) => origin.realmMembersSubscribedToNotifications},
+      )
+      .custom(
+        ({ value, context }) => {
+          const realmName: string = context.origin.realm.account.name;
+          const realmId: string = context.origin.realm.pubkey.toBase58();
+          const message: string = this.constructMessageMango(
+            realmName,
+            realmId,
+            value,
+          );
+          this.logger.log(`Sending dialect message: ${message}`);
+          return {
+            message: message,
+          };
+        },
+        this.notificationSink,
+        { dispatch: 'multicast',  to: ({ origin }) => origin.realmMembersSubscribedToNotifications},
       )
       .and()
       .build();
@@ -392,7 +461,6 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
         });
       })
       .flat();
-    console.log(data);
     return data;
   }
 
@@ -505,7 +573,7 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
     if (process.env.TEST_MODE) {
       return proposals.slice(
         0,
-        Math.round(Math.random() * Math.max(1, 2)),
+        Math.round(Math.random() * Math.max(0, 2)),
       );
     }
     return proposals;
@@ -518,8 +586,12 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
       // 'H2iny4dUP2ngt9p4niUWVX4TKvr1h9eSWGNdP1zvwzNQ', // DEVNET
       'DPiH3H3c7t47BMxqTxLsuPQpEC6Kne8GA9VXbxpnZxFE', // MAINNET-BETA
     );
+
+
     const realms = await getRealm(connection, realmId);
     const proposals = await MonitoringService.getProposals(realms);
+
+    console.log(proposals);
 
     const tokenOwnerRecords = await getAllTokenOwnerRecords(
       connectionRealm,
@@ -540,7 +612,6 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
           .map((it) => [it])
           .flat();
 
-    console.log(realmMembersSubscribedToNotifications);
     return [
       {
         groupingKey: realms.pubkey.toBase58(),
