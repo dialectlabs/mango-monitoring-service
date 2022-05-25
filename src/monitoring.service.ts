@@ -32,23 +32,16 @@ import {
 import { DiscordNotificationSink } from './discord-notification-sink';
 
 const config = new Config(IDS);
-// DEVNET
-//const groupConfig = config.getGroupWithName('devnet.2') as GroupConfig;
-const groupConfig = config.getGroupWithName('mainnet.1') as GroupConfig;
+
+const groupConfig = config.getGroupWithName(process.env.MANGO_CLUSTER!) as GroupConfig;
+
 const connection = new Connection(
   config.cluster_urls[groupConfig.cluster],
   'processed',
 );
 
-// DEVNET
-//const mainnetPK = new PublicKey('GovER5Lthms3bLBqWub97yVrMmEogzX7xNjdXpPPCVZw');
-
-//MAINNET
-const mainnetPK = new PublicKey('GqTPL6qRf5aUuqscLh8Rg2HTxPUXfhhAXDptTLhp1t2J');
-
-const connectionRealm = new Connection(
-  process.env.RPC_URL!
-);
+const mangoRealmOwnerPK = new PublicKey(process.env.MANGO_REALM_OWNER_PK!);
+const connectionRealm = new Connection(process.env.RPC_URL!);
 
 export interface MarketFillsData {
   subscriber: PublicKey;
@@ -304,6 +297,21 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
     const monitorMangoDAO = Monitors.builder({
       monitorKeypair: this.dialectConnection.getKeypair(),
       dialectProgram: this.dialectConnection.getProgram(),
+      sinks: {
+        sms: {
+          twilioUsername: process.env.TWILIO_ACCOUNT_SID!,
+          twilioPassword: process.env.TWILIO_AUTH_TOKEN!,
+          senderSmsNumber: process.env.TWILIO_SMS_SENDER!,
+        },
+        telegram: {
+          telegramBotToken: process.env.TELEGRAM_TOKEN!,
+        },
+        email: {
+          apiToken: process.env.SENDGRID_KEY!,
+          senderEmail: process.env.SENDGRID_EMAIL!,
+        },
+      },
+      web2SubscriberRepositoryUrl: process.env.WEB2_SUBSCRIBER_SERVICE_BASE_URL,
     })
       .defineDataSource<RealmData>()
       .poll(
@@ -329,7 +337,9 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
             message: message,
           };
         },
-        { dispatch: 'multicast',  to: ({ origin }) => origin.realmMembersSubscribedToNotifications},
+        { dispatch: 'multicast',  to: ({ origin }) => { 
+          return origin.realmMembersSubscribedToNotifications
+        }},
       )
       .email(
         ({ value, context }) => {
@@ -346,7 +356,9 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
             text: message
           };
         },
-        { dispatch: 'multicast',  to: ({ origin }) => origin.realmMembersSubscribedToNotifications},
+        { dispatch: 'multicast',  to: ({ origin }) => { 
+          return origin.realmMembersSubscribedToNotifications
+        }},
       )
       .sms(
         ({ value, context }) => {
@@ -393,7 +405,7 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
           };
         },
         this.notificationSink,
-        { dispatch: 'multicast',  to: ({ origin }) => origin.realmMembersSubscribedToNotifications},
+        { dispatch: 'unicast', to: (val) => new PublicKey(val.groupingKey)},
       )
       .and()
       .build();
@@ -568,7 +580,7 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
 
   private static async getProposals(realm: ProgramAccount<Realm>) {
     const proposals = (
-      await getAllProposals(connectionRealm, mainnetPK, realm.pubkey)
+      await getAllProposals(connectionRealm, mangoRealmOwnerPK, realm.pubkey)
     ).flat();
     if (process.env.TEST_MODE) {
       return proposals.slice(
@@ -582,20 +594,14 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
   private async getMangoProposals(
     subscribers: ResourceId[],
   ): Promise<SourceData<RealmData>[]> {
-    const realmId = new PublicKey(
-      // 'H2iny4dUP2ngt9p4niUWVX4TKvr1h9eSWGNdP1zvwzNQ', // DEVNET
-      'DPiH3H3c7t47BMxqTxLsuPQpEC6Kne8GA9VXbxpnZxFE', // MAINNET-BETA
-    );
-
+    const realmId = new PublicKey(process.env.MANGO_REALM_PK!);
 
     const realms = await getRealm(connection, realmId);
     const proposals = await MonitoringService.getProposals(realms);
 
-    console.log(proposals);
-
     const tokenOwnerRecords = await getAllTokenOwnerRecords(
       connectionRealm,
-      mainnetPK,
+      mangoRealmOwnerPK,
       realms.pubkey,
     );
 
