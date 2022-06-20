@@ -4,8 +4,8 @@ metadata:
   annotations:
     deployment.kubernetes.io/revision: "16"
   labels:
-    app: mango-monitoring-service
-  name: mango-monitoring-service
+    app: mango-monitoring-service-mainnet
+  name: mango-monitoring-service-mainnet
   namespace: default
   resourceVersion: "65918483"
 spec:
@@ -14,7 +14,7 @@ spec:
   revisionHistoryLimit: 10
   selector:
     matchLabels:
-      app: mango-monitoring-service
+      app: mango-monitoring-service-mainnet
   strategy:
     rollingUpdate:
       maxSurge: 25%
@@ -24,12 +24,19 @@ spec:
     metadata:
       creationTimestamp: null
       labels:
-        app: mango-monitoring-service
+        app: mango-monitoring-service-mainnet
     spec:
       containers:
       - env:
         - name: NETWORK_NAME
           value: "mainnet-beta"
+        - name: SOLFLARE_API_URL
+          value: "sandbox.solflare.com"
+        - name: SOLFLARE_API_KEY
+          valueFrom:
+            secretKeyRef:
+              key: SOLFLARE_API_KEY_SANDBOX
+              name: env-vars
         - name: RPC_URL
           valueFrom:
             secretKeyRef:
@@ -73,7 +80,7 @@ spec:
               name: env-vars
         image: dialectlab/mango-monitoring-service:0.1.0
         imagePullPolicy: Always
-        name: mango-monitoring-service
+        name: mango-monitoring-service-mainnet
         resources: {}
         terminationMessagePath: /dev/termination-log
         terminationMessagePolicy: File
