@@ -33,7 +33,9 @@ import { DiscordNotificationSink } from './discord-notification-sink';
 
 const config = new Config(IDS);
 
-const groupConfig = config.getGroupWithName(process.env.MANGO_CLUSTER!) as GroupConfig;
+const groupConfig = config.getGroupWithName(
+  process.env.MANGO_CLUSTER!,
+) as GroupConfig;
 
 const connection = new Connection(
   config.cluster_urls[groupConfig.cluster],
@@ -76,7 +78,8 @@ const unhealthyThreshold = 100;
 @Injectable()
 export class MonitoringService implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly dialectConnection: DialectConnection) {}
-  private readonly notificationSink: DiscordNotificationSink = new DiscordNotificationSink();
+  private readonly notificationSink: DiscordNotificationSink =
+    new DiscordNotificationSink();
 
   private readonly logger = new Logger(MonitoringService.name);
 
@@ -96,7 +99,11 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
         email: {
           apiToken: process.env.SENDGRID_KEY!,
           senderEmail: process.env.SENDGRID_EMAIL!,
-        }
+        },
+        solflare: {
+          apiKey: process.env.SOLFLARE_API_KEY!,
+          apiUrl: process.env.SOLFLARE_API_URL!,
+        },
       },
       web2SubscriberRepositoryUrl: process.env.WEB2_SUBSCRIBER_SERVICE_BASE_URL,
     })
@@ -120,24 +127,35 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
       .email(
         ({ value }) => {
           const message: string = this.constructMessage(value);
-          return { 
-            subject: "🥭 Mango: Your order was filled",
-            text: message 
+          return {
+            subject: '🥭 Mango: Your order was filled',
+            text: message,
           };
         },
         { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
       )
       .sms(
         ({ value }) => {
-          const message: string = `🥭 Mango: ` +  this.constructMessage(value);
+          const message: string = `🥭 Mango: ` + this.constructMessage(value);
           return { body: message };
         },
         { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
       )
       .telegram(
         ({ value }) => {
-          const message: string = `🥭 Mango: ` +  this.constructMessage(value);
+          const message: string = `🥭 Mango: ` + this.constructMessage(value);
           return { body: message };
+        },
+        { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
+      )
+      .solflare(
+        ({ value }) => {
+          const message: string = `🥭 Mango: ` + this.constructMessage(value);
+          return {
+            title: '🥭 Mango: Your order was filled',
+            body: message,
+            actionUrl: '',
+          };
         },
         { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
       )
@@ -160,6 +178,10 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
         email: {
           apiToken: process.env.SENDGRID_KEY!,
           senderEmail: process.env.SENDGRID_EMAIL!,
+        },
+        solflare: {
+          apiKey: process.env.SOLFLARE_API_KEY!,
+          apiUrl: process.env.SOLFLARE_API_URL!,
         },
       },
       web2SubscriberRepositoryUrl: process.env.WEB2_SUBSCRIBER_SERVICE_BASE_URL,
@@ -190,7 +212,7 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
       .email(
         ({ value }) => {
           return {
-            subject: "🥭 Mango: Account is unhealthy",
+            subject: '🥭 Mango: Account is unhealthy',
             text: this.constructUnhealthyMessage(value, unhealthyThreshold),
           };
         },
@@ -198,15 +220,29 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
       )
       .sms(
         ({ value }) => ({
-          body: `🥭 Mango: ` + this.constructUnhealthyMessage(value, unhealthyThreshold),
+          body:
+            `🥭 Mango: ` +
+            this.constructUnhealthyMessage(value, unhealthyThreshold),
         }),
         { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
       )
       .telegram(
         ({ value }) => {
           return {
-            body: `🥭 Mango: ` + this.constructUnhealthyMessage(value, unhealthyThreshold)
-          }
+            body:
+              `🥭 Mango: ` +
+              this.constructUnhealthyMessage(value, unhealthyThreshold),
+          };
+        },
+        { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
+      )
+      .solflare(
+        ({ value }) => {
+          return {
+            title: '🥭 Mango: Account is unhealthy',
+            body: this.constructUnhealthyMessage(value, unhealthyThreshold),
+            actionUrl: '',
+          };
         },
         { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
       )
@@ -232,7 +268,7 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
       .email(
         ({ value }) => {
           return {
-            subject: "🥭 Mango: Account is healthy",
+            subject: '🥭 Mango: Account is healthy',
             text: this.constructHealthyMessage(value),
           };
         },
@@ -248,6 +284,16 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
         ({ value }) => ({
           body: `🥭 Mango: ` + this.constructHealthyMessage(value),
         }),
+        { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
+      )
+      .solflare(
+        ({ value }) => {
+          return {
+            title: '🥭 Mango: Account is healthy',
+            body: this.constructHealthyMessage(value),
+            actionUrl: '',
+          };
+        },
         { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
       )
       .also()
@@ -272,7 +318,7 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
       .email(
         ({ value }) => {
           return {
-            subject: "🥭 Mango: Your account is being liquidated",
+            subject: '🥭 Mango: Your account is being liquidated',
             text: this.constructCriticalHealthMessage(),
           };
         },
@@ -288,6 +334,16 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
         ({ value }) => ({
           body: `🥭 Mango: ` + this.constructCriticalHealthMessage(),
         }),
+        { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
+      )
+      .solflare(
+        ({ value }) => {
+          return {
+            title: '🥭 Mango: Your account is being liquidated',
+            body: this.constructCriticalHealthMessage(),
+            actionUrl: '',
+          };
+        },
         { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
       )
       .and()
@@ -309,6 +365,10 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
         email: {
           apiToken: process.env.SENDGRID_KEY!,
           senderEmail: process.env.SENDGRID_EMAIL!,
+        },
+        solflare: {
+          apiKey: process.env.SOLFLARE_API_KEY!,
+          apiUrl: process.env.SOLFLARE_API_URL!,
         },
       },
       web2SubscriberRepositoryUrl: process.env.WEB2_SUBSCRIBER_SERVICE_BASE_URL,
@@ -337,9 +397,12 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
             message: message,
           };
         },
-        { dispatch: 'multicast',  to: ({ origin }) => { 
-          return origin.realmMembersSubscribedToNotifications
-        }},
+        {
+          dispatch: 'multicast',
+          to: ({ origin }) => {
+            return origin.realmMembersSubscribedToNotifications;
+          },
+        },
       )
       .email(
         ({ value, context }) => {
@@ -352,13 +415,16 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
           );
 
           return {
-            subject: "🥭 Mango: new proposal was created",
-            text: message
+            subject: '🥭 Mango: new proposal was created',
+            text: message,
           };
         },
-        { dispatch: 'multicast',  to: ({ origin }) => { 
-          return origin.realmMembersSubscribedToNotifications
-        }},
+        {
+          dispatch: 'multicast',
+          to: ({ origin }) => {
+            return origin.realmMembersSubscribedToNotifications;
+          },
+        },
       )
       .sms(
         ({ value, context }) => {
@@ -370,10 +436,13 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
             value,
           );
           return {
-            body: `🥭 Mango: ` + message
-          }
+            body: `🥭 Mango: ` + message,
+          };
         },
-        { dispatch: 'multicast',  to: ({ origin }) => origin.realmMembersSubscribedToNotifications},
+        {
+          dispatch: 'multicast',
+          to: ({ origin }) => origin.realmMembersSubscribedToNotifications,
+        },
       )
       .telegram(
         ({ value, context }) => {
@@ -386,9 +455,35 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
           );
           return {
             body: `🥭 Mango: ` + message,
-          }
+          };
         },
-        { dispatch: 'multicast',  to: ({ origin }) => origin.realmMembersSubscribedToNotifications},
+        {
+          dispatch: 'multicast',
+          to: ({ origin }) => origin.realmMembersSubscribedToNotifications,
+        },
+      )
+      .solflare(
+        ({ value, context }) => {
+          const realmName: string = context.origin.realm.account.name;
+          const realmId: string = context.origin.realm.pubkey.toBase58();
+          const message: string = this.constructMessageMango(
+            realmName,
+            realmId,
+            value,
+          );
+
+          return {
+            title: '🥭 Mango: new proposal was created',
+            body: message,
+            actionUrl: '',
+          };
+        },
+        {
+          dispatch: 'multicast',
+          to: ({ origin }) => {
+            return origin.realmMembersSubscribedToNotifications;
+          },
+        },
       )
       .custom(
         ({ value, context }) => {
@@ -405,7 +500,7 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
           };
         },
         this.notificationSink,
-        { dispatch: 'unicast', to: (val) => new PublicKey(val.groupingKey)},
+        { dispatch: 'unicast', to: (val) => new PublicKey(val.groupingKey) },
       )
       .and()
       .build();
@@ -425,7 +520,7 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
   private constructCriticalHealthMessage(): string {
     return `🚨 ALERT: Your account health has passed the ${0}% liquidation threshold and is being liquidated.`;
   }
-  
+
   async onModuleDestroy() {
     await Monitors.shutdown();
   }
@@ -580,13 +675,11 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
 
   private static async getProposals(realm: ProgramAccount<Realm>) {
     const proposals = (
-      await getAllProposals(connectionRealm, mangoRealmOwnerPK, realm.pubkey)
+      await getAllProposals(connection, mangoRealmOwnerPK, realm.pubkey)
     ).flat();
+
     if (process.env.TEST_MODE) {
-      return proposals.slice(
-        0,
-        Math.round(Math.random() * Math.max(0, 2)),
-      );
+      return proposals.slice(0, Math.round(Math.random() * Math.max(0, 2)));
     }
     return proposals;
   }
@@ -609,6 +702,8 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
       subscribers.map((it) => [it.toBase58(), it]),
     );
 
+    console.log(proposals);
+
     const realmMembersSubscribedToNotifications: PublicKey[] = process.env
       .TEST_MODE
       ? subscribers.map((it) => [it]).flat()
@@ -617,6 +712,8 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
           .filter((it) => subscribersSet[it.toBase58()])
           .map((it) => [it])
           .flat();
+
+    console.log(realmMembersSubscribedToNotifications[0].toBase58());
 
     return [
       {
@@ -658,7 +755,9 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
     return [
       ...proposalsAdded.map(
         (it) =>
-          `📜 New proposal for ${realmName}: https://realms.today/dao/${realmId}/proposal/${it.pubkey.toBase58()} - ${it.account.name} added by ${it.account.tokenOwnerRecord.toBase58()}`,
+          `📜 New proposal for ${realmName}: https://realms.today/dao/${realmId}/proposal/${it.pubkey.toBase58()} - ${
+            it.account.name
+          } added by ${it.account.tokenOwnerRecord.toBase58()}`,
       ),
     ].join('\n');
   }
