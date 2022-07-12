@@ -30,6 +30,12 @@ spec:
       - env:
         - name: NETWORK_NAME
           value: "mainnet-beta"
+        - name: MANGO_CLUSTER
+          value: "mainnet.1"
+        - name: MANGO_REALM_OWNER_PK
+          value: "GqTPL6qRf5aUuqscLh8Rg2HTxPUXfhhAXDptTLhp1t2J"
+        - name: MANGO_REALM_PK
+          value: "DPiH3H3c7t47BMxqTxLsuPQpEC6Kne8GA9VXbxpnZxFE"
         - name: SOLFLARE_API_URL
           value: "sandbox.solflare.com"
         - name: SOLFLARE_API_KEY

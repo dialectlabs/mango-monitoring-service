@@ -78,8 +78,8 @@ const unhealthyThreshold = 100;
 @Injectable()
 export class MonitoringService implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly dialectConnection: DialectConnection) {}
-  private readonly notificationSink: DiscordNotificationSink =
-    new DiscordNotificationSink();
+  // private readonly notificationSink: DiscordNotificationSink =
+  //   new DiscordNotificationSink();
 
   private readonly logger = new Logger(MonitoringService.name);
 
@@ -485,23 +485,23 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
           },
         },
       )
-      .custom(
-        ({ value, context }) => {
-          const realmName: string = context.origin.realm.account.name;
-          const realmId: string = context.origin.realm.pubkey.toBase58();
-          const message: string = this.constructMessageMango(
-            realmName,
-            realmId,
-            value,
-          );
-          this.logger.log(`Sending dialect message: ${message}`);
-          return {
-            message: message,
-          };
-        },
-        this.notificationSink,
-        { dispatch: 'unicast', to: (val) => new PublicKey(val.groupingKey) },
-      )
+      // .custom(
+      //   ({ value, context }) => {
+      //     const realmName: string = context.origin.realm.account.name;
+      //     const realmId: string = context.origin.realm.pubkey.toBase58();
+      //     const message: string = this.constructMessageMango(
+      //       realmName,
+      //       realmId,
+      //       value,
+      //     );
+      //     this.logger.log(`Sending dialect message: ${message}`);
+      //     return {
+      //       message: message,
+      //     };
+      //   },
+      //   this.notificationSink,
+      //   { dispatch: 'unicast', to: (val) => new PublicKey(val.groupingKey) },
+      // )
       .and()
       .build();
     monitorMangoDAO.start();
