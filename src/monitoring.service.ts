@@ -5,7 +5,6 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Monitors, Pipelines } from '@dialectlabs/monitor';
-import { DialectConnection } from './dialect-connection';
 import {
   MangoClient,
   Config,
@@ -30,6 +29,7 @@ import {
   Realm,
 } from '@solana/spl-governance';
 import { DiscordNotificationSink } from './discord-notification-sink';
+import { DialectSdk } from './dialect-sdk';
 
 const config = new Config(IDS);
 
@@ -43,7 +43,7 @@ const connection = new Connection(
 );
 
 const mangoRealmOwnerPK = new PublicKey(process.env.MANGO_REALM_OWNER_PK!);
-const connectionRealm = new Connection(process.env.RPC_URL!);
+const connectionRealm = new Connection(process.env.DIALECT_SDK_SOLANA_RPC_URL!);
 
 export interface MarketFillsData {
   subscriber: PublicKey;
@@ -77,7 +77,7 @@ const unhealthyThreshold = 100;
 
 @Injectable()
 export class MonitoringService implements OnModuleInit, OnModuleDestroy {
-  constructor(private readonly dialectConnection: DialectConnection) {}
+  constructor(private readonly sdk: DialectSdk) {}
   // private readonly notificationSink: DiscordNotificationSink =
   //   new DiscordNotificationSink();
 
@@ -85,27 +85,14 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit() {
     const monitor = Monitors.builder({
-      monitorKeypair: this.dialectConnection.getKeypair(),
-      dialectProgram: this.dialectConnection.getProgram(),
+      sdk: this.sdk,
+      subscribersCacheTTL: Duration.fromObject({ minute: 5 }),
       sinks: {
-        sms: {
-          twilioUsername: process.env.TWILIO_ACCOUNT_SID!,
-          twilioPassword: process.env.TWILIO_AUTH_TOKEN!,
-          senderSmsNumber: process.env.TWILIO_SMS_SENDER!,
-        },
-        telegram: {
-          telegramBotToken: process.env.TELEGRAM_TOKEN!,
-        },
-        email: {
-          apiToken: process.env.SENDGRID_KEY!,
-          senderEmail: process.env.SENDGRID_EMAIL!,
-        },
         solflare: {
           apiKey: process.env.SOLFLARE_API_KEY!,
           apiUrl: process.env.SOLFLARE_API_URL!,
         },
       },
-      web2SubscriberRepositoryUrl: process.env.WEB2_SUBSCRIBER_SERVICE_BASE_URL,
     })
       .defineDataSource<MarketFillsData>()
       .poll(
@@ -117,42 +104,23 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
         pipelines: [Pipelines.added((fo1, fo2) => fo1.orderId.eq(fo2.orderId))],
       })
       .notify()
-      .dialectThread(
-        ({ value }) => {
-          const message: string = this.constructMessage(value);
-          return { message: message };
-        },
-        { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
-      )
-      .email(
-        ({ value }) => {
-          const message: string = this.constructMessage(value);
+      .dialectSdk(
+        (adapter) => {
           return {
-            subject: '🥭 Mango: Your order was filled',
-            text: message,
+            title: 'Order Filled', // Note: 'Mango: ' pre-pended in data-service
+            message: this.constructMessage(adapter.value),
           };
         },
-        { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
-      )
-      .sms(
-        ({ value }) => {
-          const message: string = `🥭 Mango: ` + this.constructMessage(value);
-          return { body: message };
+        {
+          dispatch: 'unicast',
+          to: ({ origin }) => origin.subscriber,
         },
-        { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
-      )
-      .telegram(
-        ({ value }) => {
-          const message: string = `🥭 Mango: ` + this.constructMessage(value);
-          return { body: message };
-        },
-        { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
       )
       .solflare(
         ({ value }) => {
           const message: string = `🥭 Mango: ` + this.constructMessage(value);
           return {
-            title: '🥭 Mango: Your order was filled',
+            title: '🥭 Mango: Order Filled',
             body: message,
             actionUrl: '',
           };
@@ -164,27 +132,14 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
     monitor.start();
 
     const healthMonitor = Monitors.builder({
-      monitorKeypair: this.dialectConnection.getKeypair(),
-      dialectProgram: this.dialectConnection.getProgram(),
+      sdk: this.sdk,
+      subscribersCacheTTL: Duration.fromObject({ minute: 5 }),
       sinks: {
-        sms: {
-          twilioUsername: process.env.TWILIO_ACCOUNT_SID!,
-          twilioPassword: process.env.TWILIO_AUTH_TOKEN!,
-          senderSmsNumber: process.env.TWILIO_SMS_SENDER!,
-        },
-        telegram: {
-          telegramBotToken: process.env.TELEGRAM_TOKEN!,
-        },
-        email: {
-          apiToken: process.env.SENDGRID_KEY!,
-          senderEmail: process.env.SENDGRID_EMAIL!,
-        },
         solflare: {
           apiKey: process.env.SOLFLARE_API_KEY!,
           apiUrl: process.env.SOLFLARE_API_URL!,
         },
       },
-      web2SubscriberRepositoryUrl: process.env.WEB2_SUBSCRIBER_SERVICE_BASE_URL,
     })
       .defineDataSource<HealthData>()
       .poll(
@@ -201,40 +156,17 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
         ],
       })
       .notify()
-      .dialectThread(
-        ({ value }) => {
+      .dialectSdk(
+        (adapter) => {
           return {
-            message: this.constructUnhealthyMessage(value, unhealthyThreshold),
+            title: 'Account Unhealthy', // Note: 'Mango: ' pre-pended in data-service
+            message: this.constructUnhealthyMessage(adapter.value, unhealthyThreshold),
           };
         },
-        { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
-      )
-      .email(
-        ({ value }) => {
-          return {
-            subject: '🥭 Mango: Account is unhealthy',
-            text: this.constructUnhealthyMessage(value, unhealthyThreshold),
-          };
+        {
+          dispatch: 'unicast',
+          to: ({ origin }) => origin.subscriber,
         },
-        { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
-      )
-      .sms(
-        ({ value }) => ({
-          body:
-            `🥭 Mango: ` +
-            this.constructUnhealthyMessage(value, unhealthyThreshold),
-        }),
-        { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
-      )
-      .telegram(
-        ({ value }) => {
-          return {
-            body:
-              `🥭 Mango: ` +
-              this.constructUnhealthyMessage(value, unhealthyThreshold),
-          };
-        },
-        { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
       )
       .solflare(
         ({ value }) => {
@@ -257,34 +189,17 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
         ],
       })
       .notify()
-      .dialectThread(
-        ({ value }) => {
+      .dialectSdk(
+        (adapter) => {
           return {
-            message: this.constructHealthyMessage(value),
+            title: 'Account Healthy', // Note: 'Mango: ' pre-pended in data-service
+            message: this.constructHealthyMessage(adapter.value),
           };
         },
-        { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
-      )
-      .email(
-        ({ value }) => {
-          return {
-            subject: '🥭 Mango: Account is healthy',
-            text: this.constructHealthyMessage(value),
-          };
+        {
+          dispatch: 'unicast',
+          to: ({ origin }) => origin.subscriber,
         },
-        { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
-      )
-      .sms(
-        ({ value }) => ({
-          body: `🥭 Mango: ` + this.constructHealthyMessage(value),
-        }),
-        { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
-      )
-      .telegram(
-        ({ value }) => ({
-          body: `🥭 Mango: ` + this.constructHealthyMessage(value),
-        }),
-        { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
       )
       .solflare(
         ({ value }) => {
@@ -307,34 +222,17 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
         ],
       })
       .notify()
-      .dialectThread(
-        ({ value }) => {
+      .dialectSdk(
+        (adapter) => {
           return {
+            title: 'Liquidation Alert', // Note: 'Mango: ' pre-pended in data-service
             message: this.constructCriticalHealthMessage(),
           };
         },
-        { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
-      )
-      .email(
-        ({ value }) => {
-          return {
-            subject: '🥭 Mango: Your account is being liquidated',
-            text: this.constructCriticalHealthMessage(),
-          };
+        {
+          dispatch: 'unicast',
+          to: ({ origin }) => origin.subscriber,
         },
-        { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
-      )
-      .sms(
-        ({ value }) => ({
-          body: `🥭 Mango: ` + this.constructCriticalHealthMessage(),
-        }),
-        { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
-      )
-      .telegram(
-        ({ value }) => ({
-          body: `🥭 Mango: ` + this.constructCriticalHealthMessage(),
-        }),
-        { dispatch: 'unicast', to: ({ origin }) => origin.subscriber },
       )
       .solflare(
         ({ value }) => {
@@ -351,27 +249,14 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
     healthMonitor.start();
 
     const monitorMangoDAO = Monitors.builder({
-      monitorKeypair: this.dialectConnection.getKeypair(),
-      dialectProgram: this.dialectConnection.getProgram(),
+      sdk: this.sdk,
+      subscribersCacheTTL: Duration.fromObject({ minute: 5 }),
       sinks: {
-        sms: {
-          twilioUsername: process.env.TWILIO_ACCOUNT_SID!,
-          twilioPassword: process.env.TWILIO_AUTH_TOKEN!,
-          senderSmsNumber: process.env.TWILIO_SMS_SENDER!,
-        },
-        telegram: {
-          telegramBotToken: process.env.TELEGRAM_TOKEN!,
-        },
-        email: {
-          apiToken: process.env.SENDGRID_KEY!,
-          senderEmail: process.env.SENDGRID_EMAIL!,
-        },
         solflare: {
           apiKey: process.env.SOLFLARE_API_KEY!,
           apiUrl: process.env.SOLFLARE_API_URL!,
         },
       },
-      web2SubscriberRepositoryUrl: process.env.WEB2_SUBSCRIBER_SERVICE_BASE_URL,
     })
       .defineDataSource<RealmData>()
       .poll(
@@ -383,7 +268,7 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
         pipelines: [Pipelines.added((p1, p2) => p1.pubkey.equals(p2.pubkey))],
       })
       .notify()
-      .dialectThread(
+      .dialectSdk(
         ({ value, context }) => {
           const realmName: string = context.origin.realm.account.name;
           const realmId: string = context.origin.realm.pubkey.toBase58();
@@ -392,69 +277,9 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
             realmId,
             value,
           );
-          this.logger.log(`Sending dialect message: ${message}`);
           return {
+            title: 'New Proposal', // Note: 'Mango: ' pre-pended in data-service
             message: message,
-          };
-        },
-        {
-          dispatch: 'multicast',
-          to: ({ origin }) => {
-            return origin.realmMembersSubscribedToNotifications;
-          },
-        },
-      )
-      .email(
-        ({ value, context }) => {
-          const realmName: string = context.origin.realm.account.name;
-          const realmId: string = context.origin.realm.pubkey.toBase58();
-          const message: string = this.constructMessageMango(
-            realmName,
-            realmId,
-            value,
-          );
-
-          return {
-            subject: '🥭 Mango: new proposal was created',
-            text: message,
-          };
-        },
-        {
-          dispatch: 'multicast',
-          to: ({ origin }) => {
-            return origin.realmMembersSubscribedToNotifications;
-          },
-        },
-      )
-      .sms(
-        ({ value, context }) => {
-          const realmName: string = context.origin.realm.account.name;
-          const realmId: string = context.origin.realm.pubkey.toBase58();
-          const message: string = this.constructMessageMango(
-            realmName,
-            realmId,
-            value,
-          );
-          return {
-            body: `🥭 Mango: ` + message,
-          };
-        },
-        {
-          dispatch: 'multicast',
-          to: ({ origin }) => origin.realmMembersSubscribedToNotifications,
-        },
-      )
-      .telegram(
-        ({ value, context }) => {
-          const realmName: string = context.origin.realm.account.name;
-          const realmId: string = context.origin.realm.pubkey.toBase58();
-          const message: string = this.constructMessageMango(
-            realmName,
-            realmId,
-            value,
-          );
-          return {
-            body: `🥭 Mango: ` + message,
           };
         },
         {
@@ -485,23 +310,6 @@ export class MonitoringService implements OnModuleInit, OnModuleDestroy {
           },
         },
       )
-      // .custom(
-      //   ({ value, context }) => {
-      //     const realmName: string = context.origin.realm.account.name;
-      //     const realmId: string = context.origin.realm.pubkey.toBase58();
-      //     const message: string = this.constructMessageMango(
-      //       realmName,
-      //       realmId,
-      //       value,
-      //     );
-      //     this.logger.log(`Sending dialect message: ${message}`);
-      //     return {
-      //       message: message,
-      //     };
-      //   },
-      //   this.notificationSink,
-      //   { dispatch: 'unicast', to: (val) => new PublicKey(val.groupingKey) },
-      // )
       .and()
       .build();
     monitorMangoDAO.start();
